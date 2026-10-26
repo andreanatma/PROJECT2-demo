@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body { @apply bg-surface text-on-surface antialiased; font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif; }
+  :focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+}
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded px-5 py-2.5 text-title-md transition-all disabled:cursor-not-allowed disabled:opacity-60; }
+  .btn-primary { @apply btn bg-primary-container text-white hover:bg-[#1D4ED8] hover:-translate-y-px; }
+  .btn-accent { @apply btn bg-accent text-navy font-semibold hover:bg-accent-hover shadow-sm; }
+  .btn-secondary { @apply btn bg-white text-navy border border-[#E2E8F0] hover:bg-[#F8FAFC] hover:border-[#CBD5E1]; }
+  .btn-ghost { @apply btn text-[#64748B] hover:bg-[#F1F5F9] hover:text-navy; }
+  .btn-danger { @apply btn bg-error text-white hover:bg-[#93000a]; }
+  .card { @apply rounded-lg border border-[#E2E8F0] bg-white shadow-[0_1px_3px_0_rgba(15,23,42,0.05),0_1px_2px_-1px_rgba(15,23,42,0.04)]; }
+  .input { @apply h-[42px] w-full rounded border border-[#E2E8F0] bg-white px-3 text-body-md text-navy placeholder:text-[#94A3B8] focus:border-primary-container focus:outline-none focus:ring-[3px] focus:ring-primary-container/15; }
+  textarea.input { @apply h-auto py-2.5; }
+  .label { @apply mb-1.5 block text-label-md text-[#334155]; }
+  .badge { @apply inline-flex h-6 items-center rounded-full px-2 text-label-sm uppercase tracking-[0.05em]; }
+  .badge-neutral { @apply badge bg-[#F1F5F9] text-navy; }
+  .badge-info { @apply badge bg-[#EFF6FF] text-[#1E40AF]; }
+  .badge-success { @apply badge bg-[#ECFDF5] text-[#065F46]; }
+  .badge-warn { @apply badge bg-[#FEF3C7] text-[#92400E]; }
+  .container-x { @apply mx-auto w-full max-w-7xl px-6 lg:px-12; }
+  .icon { font-family: "Material Symbols Outlined"; font-weight: normal; font-style: normal; line-height: 1; letter-spacing: normal; text-transform: none; display: inline-block; white-space: nowrap; direction: ltr; -webkit-font-feature-settings: "liga"; font-feature-settings: "liga"; -webkit-font-smoothing: antialiased; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
