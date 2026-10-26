@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash, randomBytes } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "./db";
@@ -14,7 +14,44 @@ export const IDLE_MINUTES = IDLE_MS / 60_000;
 
 export type AuthUser = { id: number; name: string; email: string; role: Role };
 
-const hashToken = (t: string) => createHash("sha256").update(t).digest("hex");
+/**
+ * MODE DEMO: sesi bersifat STATELESS (token bertanda tangan HMAC di cookie), bukan baris di database.
+ * Alasannya: di hosting serverless (Vercel) setiap request bisa dilayani instance berbeda dengan memori
+ * berbeda, sehingga sesi yang disimpan di memori satu instance tidak dikenali instance lain (admin "terlempar" login).
+ * Semua instance cukup berbagi SESSION_SECRET (atau turunan dari DEMO_ADMIN_PASSWORD) untuk memvalidasi token.
+ */
+const SECRET = process.env.SESSION_SECRET || `apex-demo-session:${process.env.DEMO_ADMIN_PASSWORD ?? ""}:${process.env.BOOTSTRAP_TOKEN ?? ""}`;
+
+type Payload = { u: number; c: number; a: number }; // user id, dibuat pada, aktivitas terakhir (epoch ms)
+
+const sign = (body: string) => createHmac("sha256", SECRET).update(body).digest("base64url");
+
+function encode(p: Payload): string {
+  const body = Buffer.from(JSON.stringify(p)).toString("base64url");
+  return `${body}.${sign(body)}`;
+}
+
+function decode(token: string): Payload | null {
+  const [body, sig, extra] = token.split(".");
+  if (!body || !sig || extra !== undefined) return null;
+  const expected = Buffer.from(sign(body));
+  const given = Buffer.from(sig);
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
+  try {
+    const p = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as Payload;
+    return Number.isInteger(p.u) && Number.isFinite(p.c) && Number.isFinite(p.a) ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+const cookieOpts = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge: Math.floor(MAX_MS / 1000),
+};
 
 export async function getClientIp(): Promise<string> {
   const h = await headers();
@@ -22,56 +59,36 @@ export async function getClientIp(): Promise<string> {
 }
 
 export async function createSession(userId: number): Promise<void> {
-  const token = randomBytes(32).toString("base64url");
-  const h = await headers();
-  await prisma.session.create({
-    data: {
-      tokenHash: hashToken(token),
-      userId,
-      ipAddress: await getClientIp(),
-      userAgent: h.get("user-agent")?.slice(0, 255) ?? null,
-      expiresAt: new Date(Date.now() + MAX_MS),
-    },
-  });
-  (await cookies()).set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: Math.floor(MAX_MS / 1000),
-  });
+  const now = Date.now();
+  (await cookies()).set(SESSION_COOKIE, encode({ u: userId, c: now, a: now }), cookieOpts);
 }
 
 /**
- * Validasi sesi di server. Idle timeout dihitung dari lastActivityAt di database,
- * yang hanya diperbarui oleh request terautentikasi yang lolos validasi ini.
+ * Validasi sesi di server: tanda tangan, umur maksimum, idle timeout (dari `a`), dan status pengguna.
+ * Perpanjangan idle ditulis ke cookie hanya bila konteksnya mengizinkan (server action / route handler);
+ * saat render halaman, penulisan cookie ditolak Next.js dan diabaikan. Klien juga memanggil pingSession() berkala.
  */
 export async function getSession(): Promise<AuthUser | null> {
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  const tokenHash = hashToken(token);
-  const s = await prisma.session.findUnique({ where: { tokenHash }, include: { user: true } });
-  if (!s) return null;
+  const p = decode(token);
+  if (!p) return null;
   const now = Date.now();
-  const idle = now - s.lastActivityAt.getTime() > IDLE_MS;
-  const expired = s.expiresAt.getTime() < now;
-  if (idle || expired || !s.user.isActive) {
-    await prisma.session.delete({ where: { id: s.id } }).catch(() => undefined);
-    return null;
+  if (now - p.a > IDLE_MS || now - p.c > MAX_MS) return null;
+  const user = await prisma.user.findUnique({ where: { id: p.u } });
+  if (!user || !user.isActive) return null;
+  if (now - p.a > TOUCH_INTERVAL_MS) {
+    try { jar.set(SESSION_COOKIE, encode({ ...p, a: now }), { ...cookieOpts, maxAge: Math.max(1, Math.floor((p.c + MAX_MS - now) / 1000)) }); } catch { /* konteks render: abaikan */ }
   }
-  if (now - s.lastActivityAt.getTime() > TOUCH_INTERVAL_MS) {
-    await prisma.session.update({ where: { id: s.id }, data: { lastActivityAt: new Date(now) } }).catch(() => undefined);
-  }
-  return { id: s.user.id, name: s.user.name, email: s.user.email, role: s.user.role };
+  return { id: user.id, name: user.name, email: user.email, role: user.role };
 }
 
 export async function destroySession(): Promise<void> {
-  const jar = await cookies();
-  const token = jar.get(SESSION_COOKIE)?.value;
-  if (token) await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } });
-  jar.delete(SESSION_COOKIE);
+  (await cookies()).delete(SESSION_COOKIE);
 }
 
+/** Token stateless tidak bisa dicabut satu per satu; akun nonaktif/dihapus otomatis ditolak oleh getSession(). */
 export async function destroyUserSessions(userId: number): Promise<void> {
   await prisma.session.deleteMany({ where: { userId } });
 }

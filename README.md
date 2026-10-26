@@ -22,10 +22,10 @@ Tidak perlu `.env`. Akun admin demo (dibuat otomatis): `admin@apex-demo.test` / 
 3. (Opsional) Environment Variables: `SITE_URL` (URL Vercel Anda), `DEMO_ADMIN_PASSWORD`.
 4. Deploy.
 
-**Keterbatasan di Vercel (serverless):** tiap instance punya memori sendiri. Halaman publik selalu konsisten
-(data awal sama di setiap instance), tetapi *login admin dan hasil edit* bisa "hilang" saat request berpindah instance
-atau cold start. Untuk demo admin yang stabil, pakai host satu-proses (Railway, Render, VPS: `npm run build && npm start`)
-atau jalankan lokal.
+**Keterbatasan di Vercel (serverless):** tiap instance punya memori sendiri.
+- ✅ Halaman publik selalu konsisten (data awal sama di setiap instance).
+- ✅ Login admin stabil: sesi berupa token bertanda tangan di cookie, valid di instance mana pun (isi `SESSION_SECRET` sendiri untuk keamanan lebih baik).
+- ⚠️ **Hasil edit admin (CRUD, pesan kontak, upload) hanya tampil di instance yang memprosesnya** dan hilang saat cold start/restart. Untuk demo CRUD yang konsisten, pakai host satu-proses (Railway, Render, VPS: `npm run build && npm start`), jalankan lokal, atau tambahkan penyimpanan eksternal.
 
 ## Variabel lingkungan (semua opsional)
 | Variabel | Fungsi |
@@ -34,6 +34,7 @@ atau jalankan lokal.
 | `DEMO_ADMIN_NAME` / `DEMO_ADMIN_EMAIL` / `DEMO_ADMIN_PASSWORD` | Akun Super Admin demo |
 | `DEMO_SEED_ADMIN=false` | Tidak membuat akun demo; pakai `/dashboard-admin/signup` + `BOOTSTRAP_TOKEN` |
 | `MAX_UPLOAD_MB` | Batas upload (default 4 MB; batas body serverless ±4,5 MB) |
+| `SESSION_SECRET` | Kunci penandatangan token sesi admin (string acak panjang; wajib sama di semua instance) |
 | `SESSION_IDLE_MINUTES`, `SESSION_MAX_HOURS` | Masa berlaku sesi admin |
 
 ## Fitur yang tetap berfungsi
